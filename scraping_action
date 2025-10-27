@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""
+IMDb Top 250 Scraper
+Fetches the top 250 movies from IMDb and saves to a timestamped JSON file.
+"""
+
+import json
+import sys
+from datetime import datetime, UTC
+from typing import List, Dict
+
+import httpx
+from lxml import html
+from lxml.cssselect import CSSSelector
+
+def scrape_imdb() -> List[Dict[str, str]]:
+    """
+    Scrape IMDb Top 250 movies using httpx and lxml.
+    
+    Returns:
+        List of dictionaries containing movie title, year, and rating.
+    """
+    url = "https://www.imdb.com/chart/top/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; TMDbBot/1.0; +http://example.com/bot)"
+    }
+    
+    try:
+        # Fetch the page
+        response = httpx.get(url, headers=headers, timeout=30.0, follow_redirects=True)
+        response.raise_for_status()  # Raise exception for 4xx/5xx status codes
+        
+        # Parse HTML
+        tree = html.fromstring(response.text)
+        
+        # CSS Selectors for IMDb Top 250 structure
+        # Note: Selectors may need adjustment if IMDb changes their HTML structure
+        title_selector = CSSSelector('h3.ipc-title__text')
+        metadata_selector = CSSSelector('span.cli-title-metadata-item')
+        rating_selector = CSSSelector('span.ipc-rating-star--rating')
+        
+        movies = []
+        
+        # Get all movie containers (simplified approach)
+        # IMDb's structure: look for list items containing movie data
+        movie_items = tree.cssselect('li.ipc-metadata-list-summary-item')
+        
+        for item in movie_items[:250]:  # Limit to top 250
+            try:
+                # Extract title
+                title_elem = item.cssselect('h3.ipc-title__text')
+                if not title_elem:
+                    continue
+                title_text = title_elem[0].text_content().strip()
+                # Remove ranking number (e.g., "1. " from "1. The Shawshank Redemption")
+                title = title_text.split('. ', 1)[1] if '. ' in title_text else title_text
+                
+                # Extract year
+                metadata_elems = item.cssselect('span.cli-title-metadata-item')
+                year = metadata_elems[0].text_content().strip() if metadata_elems else "N/A"
+                
+                # Extract rating
+                rating_elem = item.cssselect('span.ipc-rating-star--rating')
+                rating = rating_elem[0].text_content().strip() if rating_elem else "N/A"
+                
+                movies.append({
+                    "title": title,
+                    "year": year,
+                    "rating": rating
+                })
+                
+            except (IndexError, AttributeError) as e:
+                # Skip malformed entries
+                print(f"Warning: Skipped a movie entry due to parsing error: {e}")
+                continue
+        
+        if not movies:
+            raise ValueError("No movies found - IMDb structure may have changed")
+        
+        print(f"Successfully scraped {len(movies)} movies from IMDb Top 250")
+        return movies
+        
+    except httpx.HTTPError as e:
+        print(f"HTTP error occurred: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Scraping failed: {e}")
+        sys.exit(1)
+
+
+def save_to_json(data: List[Dict[str, str]]) -> str:
+    """
+    Save scraped data to a timestamped JSON file.
+    
+    Args:
+        data: List of movie dictionaries
+        
+    Returns:
+        Filename of the saved file
+    """
+    # Generate timestamped filename
+    timestamp = datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%S')
+    filename = f"imdb-top250-{timestamp}.json"
+    
+    try:
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        print(f"Data saved to {filename}")
+        return filename
+        
+    except IOError as e:
+        print(f"Failed to save file: {e}")
+        sys.exit(1)
+
+
+def main():
+    """Main execution function."""
+    print("Starting IMDb Top 250 scraper...")
+    print(f"Timestamp: {datetime.now(UTC).isoformat()}")
+    
+    # Scrape data
+    movies = scrape_imdb()
+    
+    # Save to file
+    filename = save_to_json(movies)
+    
+    print(f"Scraping completed successfully!")
+    print(f"Total movies: {len(movies)}")
+    print(f"Output file: {filename}")
+
+
+if __name__ == "__main__":
+    main()

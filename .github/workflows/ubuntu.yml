@@ -1,0 +1,14 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest   # You may change this to 'windows-latest' if needed
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Print Hello World
+      run: echo Hello, World!
